@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Giám sát Bể Nuôi Thủy Hải Sản</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.0/mqtt.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #0a1628;
+      color: #e0e0e0;
+    }
+
+    .header {
+      background: #1a2f4e;
+      padding: 16px 24px;
+      text-align: center;
+      border-bottom: 2px solid #00b4d8;
+    }
+
+    .header h1 {
+      color: #00b4d8;
+      font-size: 22px;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      margin-right: 6px;
+    }
+
+    .status-dot.online {
+      background: #22c55e;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 20px auto;
+      padding: 0 16px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: #1a2f4e;
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid #00b4d8;
+      text-align: center;
+    }
+
+    .card .label {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+
+    .card .value {
+      font-size: 42px;
+      font-weight: bold;
+      color: #00b4d8;
+    }
+
+    .card .unit {
+      font-size: 16px;
+      color: #94a3b8;
+    }
+
+    .states {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .state-card {
+      background: #1a2f4e;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      border: 1px solid #334155;
+    }
+
+    .state-card .state-label {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 20px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .badge.on {
+      background: #22c55e;
+      color: #fff;
+    }
+
+    .badge.off {
+      background: #475569;
+      color: #fff;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .ctrl-card {
+      background: #1a2f4e;
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid #334155;
+    }
+
+    .ctrl-card h3 {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    button {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+
+    button:hover {
+      opacity: 0.85;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-on {
+      background: #22c55e;
+      color: #fff;
+    }
+
+    .btn-off {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    .btn-auto {
+      background: #00b4d8;
+      color: #fff;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .chart-card {
+      background: #1a2f4e;
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid #334155;
+    }
+
+    .chart-card h3 {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+
+      .cards,
+      .states,
+      .controls,
+      .charts {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="header">
+    <h1>🐟 Giám sát Bể Nuôi Thủy Hải Sản</h1>
+
+    <p style="margin-top:6px; font-size:13px;">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Đang kết nối...</span>
+    </p>
+  </div>
+
+  <div class="container">
+
+    <!-- DU LIEU CAM BIEN -->
+    <div class="cards">
+
+      <div class="card">
+        <div class="label">💧 Mực Nước</div>
+        <div class="value" id="mucNuoc">--</div>
+        <div class="unit">cm</div>
+      </div>
+
+      <div class="card">
+        <div class="label">🌡️ Nhiệt Độ Bể</div>
+        <div class="value" id="nhietDo">--</div>
+        <div class="unit">°C</div>
+      </div>
+
+    </div>
+
+    <!-- TRANG THAI BOM VA VAN -->
+    <div class="states">
+
+      <div class="state-card">
+        <div class="state-label">⚙️ Máy Bơm Nước Vào</div>
+        <span class="badge off" id="bomBadge">OFF</span>
+      </div>
+
+      <div class="state-card">
+        <div class="state-label">🔧 Van Thoát Nước Ra</div>
+        <span class="badge off" id="vanBadge">OFF</span>
+      </div>
+
+    </div>
+
+    <!-- DIEU KHIEN -->
+    <div class="controls">
+
+      <div class="ctrl-card">
+        <h3>⚙️ Điều khiển Máy Bơm</h3>
+
+        <div class="btn-group">
+          <button class="btn-on control-btn" onclick="publish('benuoc/bom/dieu_khien','ON')">
+            BẬT
+          </button>
+
+          <button class="btn-off control-btn" onclick="publish('benuoc/bom/dieu_khien','OFF')">
+            TẮT
+          </button>
+
+          <button class="btn-auto control-btn" onclick="publish('benuoc/bom/dieu_khien','AUTO')">
+            AUTO
+          </button>
+        </div>
+      </div>
+
+      <div class="ctrl-card">
+        <h3>🔧 Điều khiển Van Thoát</h3>
+
+        <div class="btn-group">
+          <button class="btn-on control-btn" onclick="publish('benuoc/van/dieu_khien','ON')">
+            MỞ
+          </button>
+
+          <button class="btn-off control-btn" onclick="publish('benuoc/van/dieu_khien','OFF')">
+            ĐÓNG
+          </button>
+
+          <button class="btn-auto control-btn" onclick="publish('benuoc/van/dieu_khien','AUTO')">
+            AUTO
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BIEU DO -->
+    <div class="charts">
+
+      <div class="chart-card">
+        <h3>📈 Biểu đồ Mực Nước (cm)</h3>
+        <canvas id="chartMucNuoc"></canvas>
+      </div>
+
+      <div class="chart-card">
+        <h3>📈 Biểu đồ Nhiệt Độ (°C)</h3>
+        <canvas id="chartNhietDo"></canvas>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+
+    // =====================================
+    // 1. KET NOI MQTT
+    // =====================================
+
+    const broker = 'wss://broker.hivemq.com:8884/mqtt';
+
+    const opts = {
+      clientId: 'web_benuoc_' + Math.random().toString(16).slice(2),
+      clean: true,
+      connectTimeout: 10000,
+      reconnectPeriod: 3000
+    };
+
+    const mqttClient = mqtt.connect(broker, opts);
+
+    function setStatus(online) {
+
+      document.getElementById('statusDot').className =
+        'status-dot' + (online ? ' online' : '');
+
+      document.getElementById('statusText').textContent =
+        online ? 'Đã kết nối Broker' : 'Mất kết nối...';
+
+      document.querySelectorAll('.control-btn').forEach(btn => {
+        btn.disabled = !online;
+      });
+    }
+
+    setStatus(false);
+
+    mqttClient.on('connect', () => {
+
+      console.log('MQTT connected');
+
+      setStatus(true);
+
+      mqttClient.subscribe('benuoc/#', { qos: 1 }, (err) => {
+        if (err) {
+          console.error('Loi subscribe:', err);
+        }
+      });
+
+    });
+
+    mqttClient.on('reconnect', () => {
+      setStatus(false);
+    });
+
+    mqttClient.on('offline', () => {
+      setStatus(false);
+    });
+
+    mqttClient.on('close', () => {
+      setStatus(false);
+    });
+
+    mqttClient.on('error', (err) => {
+      console.error('MQTT error:', err);
+      setStatus(false);
+    });
+
+
+    // =====================================
+    // 2. NHAN DU LIEU MQTT
+    // =====================================
+
+    mqttClient.on('message', (topic, message) => {
+
+      const val = message.toString().trim();
+
+      console.log('Nhan:', topic, val);
+
+      // MUC NUOC
+      // ESP32 gui met -> HTML doi sang cm
+
+      if (topic === 'benuoc/mucnuoc') {
+
+        const mucNuocMet = parseFloat(val);
+
+        if (Number.isFinite(mucNuocMet)) {
+
+          const mucNuocCm = mucNuocMet * 100;
+
+          document.getElementById('mucNuoc').textContent =
+            mucNuocCm.toFixed(1);
+
+          addData(chartMuc, mucNuocCm);
+        }
+      }
+
+      // NHIET DO
+
+      if (topic === 'benuoc/nhietdo') {
+
+        const temp = parseFloat(val);
+
+        if (Number.isFinite(temp)) {
+
+          document.getElementById('nhietDo').textContent =
+            temp.toFixed(1);
+
+          addData(chartNhiet, temp);
+        }
+      }
+
+      // TRANG THAI BOM
+
+      if (topic === 'benuoc/bom/trang_thai') {
+
+        const b = document.getElementById('bomBadge');
+
+        b.textContent = val;
+
+        b.className =
+          'badge ' + (val === 'ON' ? 'on' : 'off');
+      }
+
+      // TRANG THAI VAN
+
+      if (topic === 'benuoc/van/trang_thai') {
+
+        const b = document.getElementById('vanBadge');
+
+        b.textContent = val;
+
+        b.className =
+          'badge ' + (val === 'ON' ? 'on' : 'off');
+      }
+
+    });
+
+
+    // =====================================
+    // 3. GUI LENH DIEU KHIEN MQTT
+    // =====================================
+
+    function publish(topic, msg) {
+
+      if (!mqttClient.connected) {
+
+        alert('Chưa kết nối MQTT Broker!');
+
+        return;
+      }
+
+      mqttClient.publish(
+        topic,
+        msg,
+        { qos: 1, retain: false },
+        (err) => {
+
+          if (err) {
+            console.error('Gui lenh that bai:', err);
+            alert('Không gửi được lệnh điều khiển!');
+          }
+          else {
+            console.log('Da gui lenh:', topic, msg);
+          }
+
+        }
+      );
+    }
+
+
+    // =====================================
+    // 4. TAO BIEU DO
+    // =====================================
+
+    const MAX_POINTS = 20;
+
+    function makeChart(id, label, color) {
+
+      return new Chart(
+        document.getElementById(id),
+        {
+          type: 'line',
+
+          data: {
+            labels: [],
+
+            datasets: [{
+              label: label,
+              data: [],
+              borderColor: color,
+              backgroundColor: color + '22',
+              fill: true,
+              tension: 0.4,
+              pointRadius: 3
+            }]
+          },
+
+          options: {
+
+            responsive: true,
+            animation: false,
+
+            scales: {
+
+              x: {
+                ticks: {
+                  color: '#94a3b8'
+                },
+                grid: {
+                  color: '#1e3a5f'
+                }
+              },
+
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  color: '#94a3b8'
+                },
+                grid: {
+                  color: '#1e3a5f'
+                }
+              }
+
+            },
+
+            plugins: {
+              legend: {
+                labels: {
+                  color: '#e0e0e0'
+                }
+              }
+            }
+
+          }
+
+        }
+      );
+    }
+
+
+    const chartMuc = makeChart(
+      'chartMucNuoc',
+      'Mực nước (cm)',
+      '#00b4d8'
+    );
+
+    const chartNhiet = makeChart(
+      'chartNhietDo',
+      'Nhiệt độ (°C)',
+      '#f97316'
+    );
+
+
+    // =====================================
+    // 5. CAP NHAT BIEU DO
+    // =====================================
+
+    function addData(chart, value) {
+
+      const now = new Date().toLocaleTimeString('vi-VN');
+
+      chart.data.labels.push(now);
+
+      chart.data.datasets[0].data.push(value);
+
+      if (chart.data.labels.length > MAX_POINTS) {
+
+        chart.data.labels.shift();
+
+        chart.data.datasets[0].data.shift();
+
+      }
+
+      chart.update();
+    }
+
+  </script>
+
+</body>
+
+</html>
